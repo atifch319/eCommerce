@@ -1,0 +1,6 @@
+{
+  "name": "@ecommerce/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared types and validation schemas. No public entry point until both apps need the same contract."
+}
