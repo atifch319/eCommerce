@@ -64,7 +64,7 @@ Express is the authoritative backend. Next.js calls it with HTTP REST. Next.js d
 eCommerce/
   apps/
     web/                     package.json and tsconfig.json; no Next.js app yet
-    api/                     package.json and tsconfig.json; no Express server yet
+    api/                     Express health-check server; no database or business modules yet
   packages/
     shared/                  package.json and tsconfig.json; no shared modules yet
   docs/
@@ -399,7 +399,7 @@ A response DTO is a stable public shape. It can omit columns that exist only for
 
 `NEXT_PUBLIC_` values are embedded in JavaScript sent to the browser. `DATABASE_URL` and `OPENAI_API_KEY` must never use that prefix.
 
-These variables are introduced with the applications. Example files live beside each app, not at the repository root: `apps/web/.env.example` for the API base URLs, and `apps/api/.env.example` for `PORT`, `DATABASE_URL`, and later `OPENAI_API_KEY`. The root package does not run a server, so it has no `.env.example`.
+Example files live beside each app, not at the repository root. `apps/api/.env.example` documents `PORT` and `NODE_ENV`. `DATABASE_URL` and `OPENAI_API_KEY` are added when those features exist. `apps/web/.env.example` will document the API base URLs when the Next.js app is created. The root package does not run a server, so it has no `.env.example`.
 
 ### Development and production
 
@@ -556,4 +556,4 @@ These are seams, not work started now.
 
 ## Current step boundary
 
-Step 02 recorded this architecture. Later tooling added workspace manifests, TypeScript, ESLint, and Prettier. The repository still has no application dependencies, no Express server, no Next.js app, no Prisma schema, and no authentication code.
+Step 02 recorded this architecture. The API now serves `GET /api/health` on port 4000. CORS, authentication, Prisma, and the Next.js app are still later work.

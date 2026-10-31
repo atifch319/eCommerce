@@ -2,7 +2,7 @@
   "name": "ecommerce",
   "version": "0.0.0",
   "private": true,
-  "description": "Modular monolith eCommerce monorepo. Application code is added in later steps.",
+  "description": "Modular monolith eCommerce monorepo.",
   "engines": {
     "node": ">=22.16.0",
     "npm": ">=9.2.0"

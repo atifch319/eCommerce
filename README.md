@@ -16,7 +16,7 @@ A modular-monolith eCommerce project used to learn Node.js and Next.js from a .N
 | Path                | Role                                                                                                    |
 | ------------------- | ------------------------------------------------------------------------------------------------------- |
 | `apps/web`          | Next.js storefront. Has a workspace manifest and TypeScript config. The application is not created yet. |
-| `apps/api`          | Node.js and Express API. Has a workspace manifest and TypeScript config. The server is not created yet. |
+| `apps/api`          | Express API. Serves `GET /api/health`. Database and business modules come later.                        |
 | `packages/shared`   | Shared types or validation schemas. Has a workspace manifest. No shared modules yet.                    |
 | `docs`              | Project documentation that does not belong in application code.                                         |
 | `.github/workflows` | GitHub Actions workflows, when CI is added.                                                             |
@@ -41,7 +41,7 @@ Install the tooling dependencies from the repository root:
 npm install
 ```
 
-Checks that run today:
+Repo-wide checks:
 
 ```bash
 npm run lint
@@ -49,20 +49,58 @@ npm run format:check
 npm run typecheck:config
 ```
 
-`npm run format` writes Prettier formatting. `typecheck:config` loads the root TypeScript config and each workspace config. It fails if a compiler option is invalid. It does not typecheck application source, because there is none yet. Each workspace config sets `"files": []` so an empty folder is valid, and `"include"` so future `src` or `app` files join the program automatically.
+`npm run format` writes Prettier formatting. `typecheck:config` checks that the TypeScript config files parse. It does not replace `npm run typecheck --workspace=@ecommerce/api`, which type-checks the API source.
 
-`dev`, `build`, and a source `typecheck` script are intentionally absent. A script that exited successfully with no application would hide the fact that nothing was checked. Those scripts arrive with the Next.js app and the Express server.
+The web app still has no `dev` or `build` script. Those arrive with the Next.js app.
 
 ### Environment files
 
 The root package does not run a server, so there is no root `.env.example`.
 
-| File, added with that app | Values                                             |
-| ------------------------- | -------------------------------------------------- |
-| `apps/web/.env.example`   | `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`         |
-| `apps/api/.env.example`   | `PORT`, `DATABASE_URL`, and later `OPENAI_API_KEY` |
+| File                    | Values                                                              |
+| ----------------------- | ------------------------------------------------------------------- |
+| `apps/api/.env.example` | `PORT`, `NODE_ENV`                                                  |
+| `apps/web/.env.example` | `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, when the web app exists |
 
 `.gitignore` ignores real `.env` files and keeps `*.env.example` trackable. Do not put credentials in tracked files.
+
+## Backend
+
+The API listens on port **4000** by default. That leaves port 3000 free for Next.js, which matches [docs/architecture.md](docs/architecture.md). Copy the example file if you want to change the port or environment name. If `PORT` is unset, the server still starts on 4000.
+
+```powershell
+Copy-Item apps\api\.env.example apps\api\.env
+```
+
+Start the API in development. This restarts the process when `apps/api/src` changes:
+
+```powershell
+npm run dev --workspace=@ecommerce/api
+```
+
+Health check:
+
+[http://localhost:4000/api/health](http://localhost:4000/api/health)
+
+```powershell
+Invoke-RestMethod http://localhost:4000/api/health
+```
+
+Build the production JavaScript, then run it:
+
+```powershell
+npm run build --workspace=@ecommerce/api
+npm run start --workspace=@ecommerce/api
+```
+
+API checks:
+
+```powershell
+npm run typecheck --workspace=@ecommerce/api
+npm run lint --workspace=@ecommerce/api
+```
+
+This is a local server only. Nothing here deploys the API.
 
 ### Lint and format
 
@@ -76,13 +114,14 @@ Step 01 created the folders, `.gitignore`, this README, and the local Git reposi
 
 Step 02 records the architecture in `docs/architecture.md`.
 
-Step 03 adds npm workspaces, TypeScript, ESLint, and Prettier. Application code is still not started.
+Step 03 adds npm workspaces, TypeScript, ESLint, and Prettier.
+
+Step 04 adds the Express API and `GET /api/health`. The storefront, database, and authentication are still not started.
 
 Not started yet:
 
-- No Next.js application and no Express server
-- No React, Express, Prisma, or other application dependencies
-- No database, Prisma schema, API routes, authentication, or UI
+- No Next.js application
+- No Prisma schema, product API, authentication, or UI
 - No commits and no GitHub remote
 
 ## Local Git
