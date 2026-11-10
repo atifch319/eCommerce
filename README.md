@@ -16,7 +16,7 @@ A modular-monolith eCommerce project used to learn Node.js and Next.js from a .N
 | Path                | Role                                                                                                    |
 | ------------------- | ------------------------------------------------------------------------------------------------------- |
 | `apps/web`          | Next.js storefront. Has a workspace manifest and TypeScript config. The application is not created yet. |
-| `apps/api`          | Express API. Serves `GET /api/health`. Database and business modules come later.                        |
+| `apps/api`          | Express API. Health check plus an in-memory example module. No database yet.                            |
 | `packages/shared`   | Shared types or validation schemas. Has a workspace manifest. No shared modules yet.                    |
 | `docs`              | Project documentation that does not belong in application code.                                         |
 | `.github/workflows` | GitHub Actions workflows, when CI is added.                                                             |
@@ -90,7 +90,19 @@ The health body is unchanged: `success`, `message`, and `timestamp`.
 
 Unknown routes return 404 with `success: false` and `error.code` `ROUTE_NOT_FOUND`. Malformed JSON returns 400. A JSON body larger than 1 MB returns 413.
 
-`POST /api/examples/validation` is a learning route, not the product catalog. A valid body is `{ "name": "Laptop", "price": 1200, "quantity": 5 }`. An optional `currency` query must be three uppercase letters, such as `?currency=USD`. `POST /api/examples/validation/:itemCode` checks the same body plus a route parameter.
+`POST /api/examples/validation` is a learning route, not the product catalog. A valid body is `{ "name": "Laptop", "price": 1200, "quantity": 5 }`. An optional `currency` query must be three uppercase letters, such as `?currency=USD`. `POST /api/examples/validation/:itemCode` checks the same body plus a route parameter. That route does not save a record.
+
+The example module also stores records in memory for the life of the process:
+
+| Method | Path                | Result                                                  |
+| ------ | ------------------- | ------------------------------------------------------- |
+| `POST` | `/api/examples`     | 201 and the created record, including its `id`          |
+| `GET`  | `/api/examples`     | 200 and the records created since the process started   |
+| `GET`  | `/api/examples/:id` | 200, or 404 `RESOURCE_NOT_FOUND` when the id is unknown |
+
+Restarting the API clears those records. PostgreSQL replaces this store in a later step. The service depends on a repository interface, so the HTTP layer does not change when the database arrives.
+
+Each module wires its repository, service, and controller in a module file. There is no dependency-injection framework. Common middleware does not import modules. Services and repositories do not import Express.
 
 CORS allows `FRONTEND_ORIGIN` (default `http://localhost:3000`) and does not use `*`. Credentialed cookies are off until authentication chooses a cookie or a bearer token. `Authorization` is already an allowed request header.
 
@@ -128,7 +140,9 @@ Step 03 adds npm workspaces, TypeScript, ESLint, and Prettier.
 
 Step 04 adds the Express API and `GET /api/health`.
 
-Step 05 adds the request pipeline: CORS, request logs, JSON limits, Zod validation, and one error format. The storefront, database, and authentication are still not started.
+Step 05 adds the request pipeline: CORS, request logs, JSON limits, Zod validation, and one error format.
+
+Step 06 splits the example API into routes, a controller, a service, and an in-memory repository. The storefront, database, and authentication are still not started.
 
 Not started yet:
 

@@ -64,7 +64,7 @@ Express is the authoritative backend. Next.js calls it with HTTP REST. Next.js d
 eCommerce/
   apps/
     web/                     package.json and tsconfig.json; no Next.js app yet
-    api/                     Express health-check server; no database or business modules yet
+    api/                     Express API with an in-memory example module; no database yet
   packages/
     shared/                  package.json and tsconfig.json; no shared modules yet
   docs/
@@ -121,14 +121,17 @@ eCommerce/
     shared/                            DTOs or Zod schemas used by both apps
 ```
 
-Each API module uses the same internal shape:
+Each API module uses the same internal shape. The example module is the first one:
 
 ```
 modules/<name>/
+  <name>.module.ts          constructs repository, service, and controller
   <name>.routes.ts
   <name>.controller.ts
   <name>.service.ts
   <name>.repository.ts
+  <name>.schema.ts
+  <name>.types.ts
 ```
 
 A file appears when that module is implemented. Empty modules are not created in advance.
@@ -219,6 +222,75 @@ The request path inside Express is:
 Route → Middleware → Controller → Service → Repository → Prisma → PostgreSQL
 ```
 
+The example module currently stops at an in-memory repository. Prisma replaces that class later. Routes, the controller, and the service stay as they are.
+
+```mermaid
+flowchart LR
+  client[HTTP client]
+  routes[Example routes]
+  controller[ExampleController]
+  service[ExampleService]
+  repository[ExampleRepository]
+  memory[In-memory store]
+
+  client --> routes --> controller --> service --> repository --> memory
+```
+
+`example.module.ts` is the composition root for that module. It constructs the repository, passes it to the service, passes the service to the controller, and returns the router. Common code does not import the module. The service depends on the `ExampleRepository` interface, not on Express.
+
+There is no dependency-injection container. The module file is the only place that calls `new`. That is enough while the graph is one repository, one service, and one controller. Step 07 replaces `InMemoryExampleRepository` in that file with a Prisma implementation of the same interface. Controllers and routes stay untouched.
+
+The API source layout today:
+
+```
+apps/api/src/
+  app.ts
+  server.ts
+  config/env.ts
+  common/
+    errors/app-error.ts
+    middleware/
+    responses/api-response.ts
+    types/express-locals.ts
+  infrastructure/logging/logger.ts
+  modules/
+    health/
+    example/
+      example.module.ts
+      example.routes.ts
+      example.controller.ts
+      example.service.ts
+      example.repository.ts
+      example.schema.ts
+      example.types.ts
+```
+
+Future commerce modules use the same files: routes, controller, service, repository, schema, types, and a module file that wires them. Empty product, order, user, and inventory folders are not created ahead of those steps.
+
+Successful module responses use one helper:
+
+```json
+{
+  "success": true,
+  "message": "Example created successfully",
+  "data": {}
+}
+```
+
+`GET /api/health` does not use that helper. Its body stays `success`, `message`, and `timestamp`.
+
+Example endpoints:
+
+| Method | Path                                 | Behavior                                                     |
+| ------ | ------------------------------------ | ------------------------------------------------------------ |
+| `POST` | `/api/examples`                      | Creates an in-memory record and returns 201                  |
+| `GET`  | `/api/examples`                      | Returns every record created in this process                 |
+| `GET`  | `/api/examples/:id`                  | Returns one record, or 404 `RESOURCE_NOT_FOUND`              |
+| `POST` | `/api/examples/validation`           | Checks the body and optional `currency` query. Does not save |
+| `POST` | `/api/examples/validation/:itemCode` | Same check, plus the route parameter. Does not save          |
+
+The in-memory array lives inside the repository created when the process starts. Stopping or restarting the API drops every record. Ids come from `crypto.randomUUID()`. Callers receive copies, so they cannot change the stored object.
+
 Each step has one job. A later step may skip a file only when that step would be an empty pass-through with no explained purpose. The checkout path uses every step, because it validates input, applies price and stock rules, and writes through Prisma.
 
 ### ASP.NET Core correspondence
@@ -269,7 +341,7 @@ Examples of rules, implemented when those modules are built:
 
 ### Repositories and Prisma
 
-Repositories are the only module code that calls Prisma. A product repository has methods such as "find active product by slug" and "list products in a category". The service asks for those operations by name.
+Repositories are the only module code that calls Prisma once the database exists. Until then, the example module uses an in-memory repository behind the same interface. A product repository will later have methods such as "find active product by slug". The service asks for those operations by name.
 
 Prisma Client is constructed once and shared. The planned schema file is `apps/api/prisma/schema.prisma`. The web app does not get a copy.
 
@@ -559,4 +631,4 @@ These are seams, not work started now.
 
 ## Current step boundary
 
-Step 02 recorded this architecture. The API serves `GET /api/health` on port 4000, with CORS, request logging, JSON limits, and Zod request validation. Authentication, Prisma, and the Next.js app are still later work.
+Step 02 recorded this architecture. The API serves `GET /api/health` and an in-memory example module under `/api/examples`. CORS, request logging, JSON limits, and Zod validation are in place. Authentication, Prisma, and the Next.js app are still later work. The example records disappear when the API process stops.

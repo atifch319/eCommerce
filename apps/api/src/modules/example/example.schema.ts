@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const exampleValidationBodySchema = z.object({
+export const exampleBodySchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters."),
   price: z.number().positive("Price must be a positive number."),
   quantity: z
@@ -25,8 +25,13 @@ export const exampleItemParamsSchema = z.object({
     ),
 });
 
-export type ExampleValidationBody = z.infer<typeof exampleValidationBodySchema>;
+export const exampleIdParamsSchema = z.object({
+  id: z.string().min(1, "Id is required."),
+});
+
+export type ExampleBody = z.infer<typeof exampleBodySchema>;
 export type ExampleValidationQuery = z.infer<
   typeof exampleValidationQuerySchema
 >;
 export type ExampleItemParams = z.infer<typeof exampleItemParamsSchema>;
+export type ExampleIdParams = z.infer<typeof exampleIdParamsSchema>;

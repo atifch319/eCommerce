@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { AppError, type ApiErrorResponse } from "../errors/app-error.js";
+import { logger } from "../../infrastructure/logging/logger.js";
 
 const JSON_BODY_LIMIT_LABEL = "1 MB";
 
@@ -51,7 +52,7 @@ export function errorHandler(
     return;
   }
 
-  logUnexpectedError(error);
+  logger.error(error);
   sendError(response, 500, "INTERNAL_ERROR", "Internal server error");
 }
 
@@ -95,13 +96,4 @@ function asBodyParserError(error: unknown): BodyParserError | undefined {
   }
 
   return error as BodyParserError;
-}
-
-function logUnexpectedError(error: unknown): void {
-  if (error instanceof Error) {
-    console.error(error.stack ?? error.message);
-    return;
-  }
-
-  console.error("Unhandled API error.");
 }
