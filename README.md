@@ -59,7 +59,7 @@ The root package does not run a server, so there is no root `.env.example`.
 
 | File                    | Values                                                              |
 | ----------------------- | ------------------------------------------------------------------- |
-| `apps/api/.env.example` | `PORT`, `NODE_ENV`                                                  |
+| `apps/api/.env.example` | `PORT`, `NODE_ENV`, `FRONTEND_ORIGIN`                               |
 | `apps/web/.env.example` | `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, when the web app exists |
 
 `.gitignore` ignores real `.env` files and keeps `*.env.example` trackable. Do not put credentials in tracked files.
@@ -85,6 +85,16 @@ Health check:
 ```powershell
 Invoke-RestMethod http://localhost:4000/api/health
 ```
+
+The health body is unchanged: `success`, `message`, and `timestamp`.
+
+Unknown routes return 404 with `success: false` and `error.code` `ROUTE_NOT_FOUND`. Malformed JSON returns 400. A JSON body larger than 1 MB returns 413.
+
+`POST /api/examples/validation` is a learning route, not the product catalog. A valid body is `{ "name": "Laptop", "price": 1200, "quantity": 5 }`. An optional `currency` query must be three uppercase letters, such as `?currency=USD`. `POST /api/examples/validation/:itemCode` checks the same body plus a route parameter.
+
+CORS allows `FRONTEND_ORIGIN` (default `http://localhost:3000`) and does not use `*`. Credentialed cookies are off until authentication chooses a cookie or a bearer token. `Authorization` is already an allowed request header.
+
+Development logs use Morgan's `dev` format. Production uses `combined`. Neither format records the body or the `Authorization` header.
 
 Build the production JavaScript, then run it:
 
@@ -116,7 +126,9 @@ Step 02 records the architecture in `docs/architecture.md`.
 
 Step 03 adds npm workspaces, TypeScript, ESLint, and Prettier.
 
-Step 04 adds the Express API and `GET /api/health`. The storefront, database, and authentication are still not started.
+Step 04 adds the Express API and `GET /api/health`.
+
+Step 05 adds the request pipeline: CORS, request logs, JSON limits, Zod validation, and one error format. The storefront, database, and authentication are still not started.
 
 Not started yet:
 

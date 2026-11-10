@@ -20,7 +20,7 @@ function start(): void {
     process.exit(1);
   }
 
-  const server = createServer(createApp());
+  const server = createServer(createApp(config));
   let isShuttingDown = false;
 
   const shutdown = (signal: NodeJS.Signals): void => {

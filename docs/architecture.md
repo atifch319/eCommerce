@@ -281,18 +281,22 @@ PostgreSQL is the system of record. Catalog, users, carts, inventory, and orders
 
 Every route that accepts input validates the body, query, and route parameters with Zod before the controller runs. Invalid input becomes a 400 response with a stable error shape.
 
-Failures throw a small application error (status code plus a public message). One error-handling middleware, registered after the routes, turns that into JSON. Unexpected failures become a generic 500. The detailed error is logged on the server and is not sent to the client.
+Failures throw a small application error (status code, public message, and a machine-readable code). One error-handling middleware, registered after the routes and the 404 handler, turns that into JSON. Unexpected failures become a generic 500. The detailed error is logged on the server and is not sent to the client.
 
-Planned error body:
+Error body:
 
 ```json
 {
+  "success": false,
   "error": {
-    "code": "PRODUCT_NOT_FOUND",
-    "message": "Product was not found."
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "details": []
   }
 }
 ```
+
+`details` is present for field validation failures. The health check stays a success payload and does not use this envelope.
 
 ### Authentication and authorization
 
@@ -394,12 +398,13 @@ A response DTO is a stable public shape. It can omit columns that exist only for
 | `API_BASE_URL`             | Next.js server      | Server Component and other server-side calls. Example in development: `http://localhost:4000` |
 | `NEXT_PUBLIC_API_BASE_URL` | Browser bundle      | Browser calls only. Same development origin as above                                          |
 | `PORT`                     | Express             | API listen port. Development value: `4000`                                                    |
+| `FRONTEND_ORIGIN`          | Express             | Browser origin allowed by CORS. Development value: `http://localhost:3000`                    |
 | `DATABASE_URL`             | Express only        | PostgreSQL connection string                                                                  |
 | `OPENAI_API_KEY`           | Express only, later | OpenAI credential                                                                             |
 
 `NEXT_PUBLIC_` values are embedded in JavaScript sent to the browser. `DATABASE_URL` and `OPENAI_API_KEY` must never use that prefix.
 
-Example files live beside each app, not at the repository root. `apps/api/.env.example` documents `PORT` and `NODE_ENV`. `DATABASE_URL` and `OPENAI_API_KEY` are added when those features exist. `apps/web/.env.example` will document the API base URLs when the Next.js app is created. The root package does not run a server, so it has no `.env.example`.
+Example files live beside each app, not at the repository root. `apps/api/.env.example` documents `PORT`, `NODE_ENV`, and `FRONTEND_ORIGIN`. `DATABASE_URL` and `OPENAI_API_KEY` are added when those features exist. `apps/web/.env.example` will document the API base URLs when the Next.js app is created. The root package does not run a server, so it has no `.env.example`.
 
 ### Development and production
 
@@ -418,11 +423,9 @@ Browser `fetch` runs from the page's origin (port 3000 in development) to the AP
 
 ### CORS
 
-CORS is required for browser calls from the web origin to the API origin. The planned middleware allows the configured web origin, the HTTP methods the API uses, and the headers the client sends.
+CORS allows the origin in `FRONTEND_ORIGIN`. The development default is `http://localhost:3000`. Unmatched browser origins do not receive `Access-Control-Allow-Origin`. The allowed methods are GET, POST, PUT, PATCH, DELETE, and OPTIONS. `Content-Type` and `Authorization` are allowed headers. `credentials` is false until authentication chooses cookies; a future bearer token can use the `Authorization` header without credentialed CORS. A wildcard origin is rejected at startup.
 
 Server-side Next.js calls do not use that middleware path as a security check. CORS is a browser rule. The API still authenticates protected browser calls normally.
-
-A wildcard origin combined with credentials is invalid in browsers. When auth uses cookies, the allowed origin is the specific web origin.
 
 ### Authentication and credentials
 
@@ -556,4 +559,4 @@ These are seams, not work started now.
 
 ## Current step boundary
 
-Step 02 recorded this architecture. The API now serves `GET /api/health` on port 4000. CORS, authentication, Prisma, and the Next.js app are still later work.
+Step 02 recorded this architecture. The API serves `GET /api/health` on port 4000, with CORS, request logging, JSON limits, and Zod request validation. Authentication, Prisma, and the Next.js app are still later work.

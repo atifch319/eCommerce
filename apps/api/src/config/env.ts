@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { config as loadDotenv } from "dotenv";
 
 const DEFAULT_PORT = 4000;
+const DEFAULT_FRONTEND_ORIGIN = "http://localhost:3000";
 const NODE_ENVIRONMENTS = ["development", "test", "production"] as const;
 
 export type NodeEnvironment = (typeof NODE_ENVIRONMENTS)[number];
@@ -10,6 +11,7 @@ export type NodeEnvironment = (typeof NODE_ENVIRONMENTS)[number];
 export type AppConfig = {
   port: number;
   nodeEnv: NodeEnvironment;
+  frontendOrigin: string;
 };
 
 export class EnvironmentConfigError extends Error {
@@ -25,6 +27,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppConfig {
   const errors: string[] = [];
   const port = readPort(source.PORT, errors);
   const nodeEnv = readNodeEnv(source.NODE_ENV, errors);
+  const frontendOrigin = readFrontendOrigin(source.FRONTEND_ORIGIN, errors);
 
   if (errors.length > 0) {
     throw new EnvironmentConfigError(
@@ -32,7 +35,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
-  return { port, nodeEnv };
+  return { port, nodeEnv, frontendOrigin };
 }
 
 function envFilePath(): string {
@@ -77,4 +80,45 @@ function readNodeEnv(
 
 function isNodeEnvironment(value: string): value is NodeEnvironment {
   return NODE_ENVIRONMENTS.some((environment) => environment === value);
+}
+
+function readFrontendOrigin(
+  value: string | undefined,
+  errors: string[],
+): string {
+  if (value === undefined) {
+    return DEFAULT_FRONTEND_ORIGIN;
+  }
+
+  if (value.trim() === "*") {
+    errors.push("FRONTEND_ORIGIN must be a specific origin, not *.");
+    return DEFAULT_FRONTEND_ORIGIN;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    errors.push("FRONTEND_ORIGIN must be an absolute http or https origin.");
+    return DEFAULT_FRONTEND_ORIGIN;
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    errors.push("FRONTEND_ORIGIN must be an absolute http or https origin.");
+    return DEFAULT_FRONTEND_ORIGIN;
+  }
+
+  if (url.username !== "" || url.password !== "") {
+    errors.push("FRONTEND_ORIGIN must not include credentials.");
+    return DEFAULT_FRONTEND_ORIGIN;
+  }
+
+  if (url.pathname !== "/" || url.search !== "" || url.hash !== "") {
+    errors.push(
+      "FRONTEND_ORIGIN must be an origin without a path, query, or hash.",
+    );
+    return DEFAULT_FRONTEND_ORIGIN;
+  }
+
+  return url.origin;
 }

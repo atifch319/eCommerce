@@ -1,73 +1,29 @@
-import express, {
-  type NextFunction,
-  type Request,
-  type Response,
-} from "express";
+import express from "express";
+import type { AppConfig } from "./config/env.js";
+import { corsMiddleware } from "./middleware/cors.middleware.js";
+import { errorHandler } from "./middleware/error-handler.middleware.js";
+import { notFoundMiddleware } from "./middleware/not-found.middleware.js";
+import { requestLogger } from "./middleware/request-logger.middleware.js";
+import { exampleValidationRouter } from "./routes/example-validation.routes.js";
 import { healthRouter } from "./routes/health.routes.js";
 
-type ErrorResponse = {
-  success: false;
-  message: string;
-};
+export const JSON_BODY_LIMIT = "1mb";
 
-type JsonParseError = SyntaxError & {
-  status?: number;
-  type?: string;
-};
-
-export function createApp() {
+export function createApp(config: AppConfig) {
   const app = express();
 
   app.disable("x-powered-by");
-  app.use(express.json());
+
+  // next() with no argument continues to the next middleware.
+  // next(error) or a thrown error skips to the error handler.
+  // Express 5 also forwards a rejected promise from an async route.
+  app.use(corsMiddleware(config.frontendOrigin));
+  app.use(requestLogger(config.nodeEnv));
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use("/api/health", healthRouter);
-  app.use(notFoundHandler);
+  app.use("/api/examples", exampleValidationRouter);
+  app.use(notFoundMiddleware);
   app.use(errorHandler);
 
   return app;
-}
-
-function notFoundHandler(_request: Request, response: Response): void {
-  const body: ErrorResponse = {
-    success: false,
-    message: "Route not found",
-  };
-
-  response.status(404).json(body);
-}
-
-function errorHandler(
-  error: unknown,
-  _request: Request,
-  response: Response,
-  _next: NextFunction,
-): void {
-  if (isJsonParseError(error)) {
-    const body: ErrorResponse = {
-      success: false,
-      message: "Request body must be valid JSON.",
-    };
-    response.status(400).json(body);
-    return;
-  }
-
-  console.error("Unhandled API error.");
-  if (error instanceof Error && error.message) {
-    console.error(error.message);
-  }
-
-  const body: ErrorResponse = {
-    success: false,
-    message: "Internal server error",
-  };
-  response.status(500).json(body);
-}
-
-function isJsonParseError(error: unknown): error is JsonParseError {
-  if (!(error instanceof SyntaxError)) {
-    return false;
-  }
-
-  const parseError = error as JsonParseError;
-  return parseError.status === 400 && parseError.type === "entity.parse.failed";
 }
