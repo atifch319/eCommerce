@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/.next/**",
       "**/coverage/**",
       "**/out/**",
+      "apps/api/src/generated/**",
     ],
   },
   eslint.configs.recommended,

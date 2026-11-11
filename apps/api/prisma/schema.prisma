@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Learning record used to prove that the example API persists data.
+/// This is not a product, order, or inventory table.
+model Example {
+  /// Primary key. Prisma Client assigns a UUID and PostgreSQL stores it.
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Name accepted by the example API. The route requires at least 2 characters.
+  name String
+
+  /// Price in major currency units, stored with two decimal places.
+  price Decimal @db.Decimal(12, 2)
+
+  /// Whole-number quantity accepted by the example API.
+  quantity Int
+
+  /// UTC timestamp set by PostgreSQL when the row is inserted.
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// UTC timestamp set on insert and refreshed when the row changes.
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("examples")
+}

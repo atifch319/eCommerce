@@ -12,6 +12,7 @@ export type AppConfig = {
   port: number;
   nodeEnv: NodeEnvironment;
   frontendOrigin: string;
+  databaseUrl: string;
 };
 
 export class EnvironmentConfigError extends Error {
@@ -28,6 +29,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = readPort(source.PORT, errors);
   const nodeEnv = readNodeEnv(source.NODE_ENV, errors);
   const frontendOrigin = readFrontendOrigin(source.FRONTEND_ORIGIN, errors);
+  const databaseUrl = readDatabaseUrl(source.DATABASE_URL, errors);
 
   if (errors.length > 0) {
     throw new EnvironmentConfigError(
@@ -35,7 +37,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
-  return { port, nodeEnv, frontendOrigin };
+  return { port, nodeEnv, frontendOrigin, databaseUrl };
 }
 
 function envFilePath(): string {
@@ -121,4 +123,42 @@ function readFrontendOrigin(
   }
 
   return url.origin;
+}
+
+function readDatabaseUrl(value: string | undefined, errors: string[]): string {
+  if (value === undefined || value.trim() === "") {
+    errors.push("DATABASE_URL is required.");
+    return "";
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    errors.push("DATABASE_URL must be a PostgreSQL connection URL.");
+    return "";
+  }
+
+  if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
+    errors.push("DATABASE_URL must be a PostgreSQL connection URL.");
+    return "";
+  }
+
+  if (url.username === "") {
+    errors.push("DATABASE_URL must include a database user.");
+    return "";
+  }
+
+  if (url.hostname === "") {
+    errors.push("DATABASE_URL must include a database host.");
+    return "";
+  }
+
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  if (databaseName === "" || databaseName.includes("/")) {
+    errors.push("DATABASE_URL must include a database name.");
+    return "";
+  }
+
+  return value;
 }

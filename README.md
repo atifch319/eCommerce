@@ -16,7 +16,7 @@ A modular-monolith eCommerce project used to learn Node.js and Next.js from a .N
 | Path                | Role                                                                                                    |
 | ------------------- | ------------------------------------------------------------------------------------------------------- |
 | `apps/web`          | Next.js storefront. Has a workspace manifest and TypeScript config. The application is not created yet. |
-| `apps/api`          | Express API. Health check plus an in-memory example module. No database yet.                            |
+| `apps/api`          | Express API. Health check plus an example module stored in PostgreSQL.                                  |
 | `packages/shared`   | Shared types or validation schemas. Has a workspace manifest. No shared modules yet.                    |
 | `docs`              | Project documentation that does not belong in application code.                                         |
 | `.github/workflows` | GitHub Actions workflows, when CI is added.                                                             |
@@ -86,21 +86,47 @@ Health check:
 Invoke-RestMethod http://localhost:4000/api/health
 ```
 
-The health body is unchanged: `success`, `message`, and `timestamp`.
+The health body is unchanged: `success`, `message`, and `timestamp`. `GET /api/health/database` checks PostgreSQL separately and returns `success` and `message` only. A database failure there is HTTP 503 with `DATABASE_UNAVAILABLE` and no internal error text.
 
 Unknown routes return 404 with `success: false` and `error.code` `ROUTE_NOT_FOUND`. Malformed JSON returns 400. A JSON body larger than 1 MB returns 413.
 
 `POST /api/examples/validation` is a learning route, not the product catalog. A valid body is `{ "name": "Laptop", "price": 1200, "quantity": 5 }`. An optional `currency` query must be three uppercase letters, such as `?currency=USD`. `POST /api/examples/validation/:itemCode` checks the same body plus a route parameter. That route does not save a record.
 
-The example module also stores records in memory for the life of the process:
+The example module stores records in the `examples` table. `price` is a PostgreSQL `DECIMAL(12, 2)` and is returned as a JSON number.
 
 | Method | Path                | Result                                                  |
 | ------ | ------------------- | ------------------------------------------------------- |
 | `POST` | `/api/examples`     | 201 and the created record, including its `id`          |
-| `GET`  | `/api/examples`     | 200 and the records created since the process started   |
+| `GET`  | `/api/examples`     | 200 and the saved records                               |
 | `GET`  | `/api/examples/:id` | 200, or 404 `RESOURCE_NOT_FOUND` when the id is unknown |
 
-Restarting the API clears those records. PostgreSQL replaces this store in a later step. The service depends on a repository interface, so the HTTP layer does not change when the database arrives.
+Stopping the API does not delete those rows. Start it again and `GET /api/examples/:id` returns the same record.
+
+PostgreSQL 16 is required locally. This machine's server trusts TCP connections from `127.0.0.1`, so the development role `ecommerce_dev` has no password. The development database is `ecommerce_dev`. Create that role and database with `psql` before the first migration if they do not exist. Do not point `DATABASE_URL` at another database.
+
+Prisma ORM 7.10.1 is installed in `@ecommerce/api`. Prisma 8 is still a release candidate and needs Node.js 22.18, so this project stays on Prisma 7. The CLI is `prisma7.config.ts`. Runtime queries use `@prisma/adapter-pg` and `pg`.
+
+Generate the client and validate the schema from the repository root:
+
+```powershell
+npm run db:generate --workspace=@ecommerce/api
+npm run db:validate --workspace=@ecommerce/api
+```
+
+Create a development migration from `apps/api`. npm 9 treats `--name` as its own option, so the name is passed to the local Prisma 7 program instead of through `npm run`:
+
+```powershell
+Set-Location apps\api
+node ..\..\node_modules\prisma\build\index.js migrate dev --name init_examples
+```
+
+`migrate dev` creates a shadow database. Do not use it against production. A later production release applies the committed migrations with:
+
+```powershell
+npm run db:deploy --workspace=@ecommerce/api
+```
+
+That production command is not part of local development, and this repository is not deployed.
 
 Each module wires its repository, service, and controller in a module file. There is no dependency-injection framework. Common middleware does not import modules. Services and repositories do not import Express.
 
@@ -142,14 +168,17 @@ Step 04 adds the Express API and `GET /api/health`.
 
 Step 05 adds the request pipeline: CORS, request logs, JSON limits, Zod validation, and one error format.
 
-Step 06 splits the example API into routes, a controller, a service, and an in-memory repository. The storefront, database, and authentication are still not started.
+Step 06 splits the example API into routes, a controller, a service, and a repository.
+
+Step 07 stores example records in PostgreSQL through Prisma. The storefront, authentication, and commerce modules are still not started.
 
 Not started yet:
 
 - No Next.js application
-- No Prisma schema, product API, authentication, or UI
-- No commits and no GitHub remote
+- No product, category, inventory, or order modules
+- No authentication or UI
+- No production deployment
 
 ## Local Git
 
-This folder is a local Git repository. Nothing is staged or committed, and nothing is pushed.
+This folder is a Git repository. Step 07 is not committed. Commit and push remain manual steps.

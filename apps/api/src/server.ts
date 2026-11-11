@@ -1,12 +1,20 @@
 import { createServer, type Server } from "node:http";
 import { createApp } from "./app.js";
 import { loadEnv } from "./config/env.js";
+import { createDatabase } from "./infrastructure/database/database.js";
+import { redactSecrets } from "./infrastructure/logging/redact.js";
+import { PrismaExampleRepository } from "./modules/example/example.prisma-repository.js";
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
-start();
+start().catch((error: unknown) => {
+  const message =
+    error instanceof Error ? error.message : "The API failed to start.";
+  console.error(redactSecrets(message));
+  process.exit(1);
+});
 
-function start(): void {
+async function start(): Promise<void> {
   let config: ReturnType<typeof loadEnv>;
 
   try {
@@ -20,7 +28,26 @@ function start(): void {
     process.exit(1);
   }
 
-  const server = createServer(createApp(config));
+  const database = createDatabase(config.databaseUrl);
+
+  try {
+    await database.connect();
+  } catch (error) {
+    console.error(
+      error instanceof Error ? error.message : "Database connection failed.",
+    );
+    await database.disconnect().catch(() => undefined);
+    process.exit(1);
+  }
+
+  console.log("Database connection established.");
+
+  const server = createServer(
+    createApp(config, {
+      examples: new PrismaExampleRepository(database.client),
+      checkDatabase: () => database.check(),
+    }),
+  );
   let isShuttingDown = false;
 
   const shutdown = (signal: NodeJS.Signals): void => {
@@ -46,7 +73,16 @@ function start(): void {
       }
 
       console.log("HTTP server closed.");
-      process.exit(0);
+      void database.disconnect().then(
+        () => {
+          console.log("Database connection closed.");
+          process.exit(0);
+        },
+        () => {
+          console.error("Database disconnect failed.");
+          process.exit(1);
+        },
+      );
     });
 
     closeIdleConnections(server);
@@ -65,7 +101,10 @@ function start(): void {
     } else {
       console.error("The HTTP server failed to start.");
     }
-    process.exit(1);
+
+    void database.disconnect().finally(() => {
+      process.exit(1);
+    });
   });
 
   server.listen(config.port, () => {

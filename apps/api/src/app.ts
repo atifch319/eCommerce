@@ -5,11 +5,17 @@ import { errorHandler } from "./common/middleware/error-handler.middleware.js";
 import { notFoundMiddleware } from "./common/middleware/not-found.middleware.js";
 import { requestLogger } from "./common/middleware/request-logger.middleware.js";
 import { createExampleModule } from "./modules/example/example.module.js";
-import { healthRouter } from "./modules/health/health.routes.js";
+import type { ExampleRepository } from "./modules/example/example.repository.js";
+import { createHealthRouter } from "./modules/health/health.routes.js";
 
 export const JSON_BODY_LIMIT = "1mb";
 
-export function createApp(config: AppConfig) {
+export type AppDependencies = {
+  examples: ExampleRepository;
+  checkDatabase: () => Promise<void>;
+};
+
+export function createApp(config: AppConfig, dependencies: AppDependencies) {
   const app = express();
 
   app.disable("x-powered-by");
@@ -20,8 +26,8 @@ export function createApp(config: AppConfig) {
   app.use(corsMiddleware(config.frontendOrigin));
   app.use(requestLogger(config.nodeEnv));
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
-  app.use("/api/health", healthRouter);
-  app.use("/api/examples", createExampleModule());
+  app.use("/api/health", createHealthRouter(dependencies.checkDatabase));
+  app.use("/api/examples", createExampleModule(dependencies.examples));
   app.use(notFoundMiddleware);
   app.use(errorHandler);
 

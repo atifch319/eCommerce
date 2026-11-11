@@ -1,7 +1,9 @@
+import { redactSecrets } from "./redact.js";
+
 export const logger = {
   error(error: unknown): void {
     if (error instanceof Error) {
-      console.error(error.stack ?? error.message);
+      console.error(redactSecrets(error.stack ?? error.message));
       return;
     }
 

@@ -64,7 +64,7 @@ Express is the authoritative backend. Next.js calls it with HTTP REST. Next.js d
 eCommerce/
   apps/
     web/                     package.json and tsconfig.json; no Next.js app yet
-    api/                     Express API with an in-memory example module; no database yet
+    api/                     Express API, Prisma, and the local ecommerce_dev database
   packages/
     shared/                  package.json and tsconfig.json; no shared modules yet
   docs/
@@ -222,7 +222,7 @@ The request path inside Express is:
 Route → Middleware → Controller → Service → Repository → Prisma → PostgreSQL
 ```
 
-The example module currently stops at an in-memory repository. Prisma replaces that class later. Routes, the controller, and the service stay as they are.
+The example module follows that path now. `PrismaExampleRepository` implements `ExampleRepository`. The service still does not import Prisma or Express.
 
 ```mermaid
 flowchart LR
@@ -230,15 +230,14 @@ flowchart LR
   routes[Example routes]
   controller[ExampleController]
   service[ExampleService]
-  repository[ExampleRepository]
-  memory[In-memory store]
+  repository[PrismaExampleRepository]
+  prisma[Prisma Client]
+  postgres[PostgreSQL]
 
-  client --> routes --> controller --> service --> repository --> memory
+  client --> routes --> controller --> service --> repository --> prisma --> postgres
 ```
 
-`example.module.ts` is the composition root for that module. It constructs the repository, passes it to the service, passes the service to the controller, and returns the router. Common code does not import the module. The service depends on the `ExampleRepository` interface, not on Express.
-
-There is no dependency-injection container. The module file is the only place that calls `new`. That is enough while the graph is one repository, one service, and one controller. Step 07 replaces `InMemoryExampleRepository` in that file with a Prisma implementation of the same interface. Controllers and routes stay untouched.
+`server.ts` is the process composition root. It creates one Prisma Client, connects before it listens, passes `PrismaExampleRepository` into the example module, and disconnects after the HTTP server has closed. `example.module.ts` still wires the service and controller. There is no dependency-injection container. Common code does not import the example module.
 
 The API source layout today:
 
@@ -252,7 +251,11 @@ apps/api/src/
     middleware/
     responses/api-response.ts
     types/express-locals.ts
-  infrastructure/logging/logger.ts
+  infrastructure/
+    logging/logger.ts
+    database/
+      prisma-client.ts
+      database.ts
   modules/
     health/
     example/
@@ -261,8 +264,18 @@ apps/api/src/
       example.controller.ts
       example.service.ts
       example.repository.ts
+      example.prisma-repository.ts
       example.schema.ts
       example.types.ts
+```
+
+Prisma's own files live beside the API package, not under `src`:
+
+```
+apps/api/
+  prisma7.config.ts
+  prisma/schema.prisma
+  prisma/migrations/
 ```
 
 Future commerce modules use the same files: routes, controller, service, repository, schema, types, and a module file that wires them. Empty product, order, user, and inventory folders are not created ahead of those steps.
@@ -283,13 +296,14 @@ Example endpoints:
 
 | Method | Path                                 | Behavior                                                     |
 | ------ | ------------------------------------ | ------------------------------------------------------------ |
-| `POST` | `/api/examples`                      | Creates an in-memory record and returns 201                  |
-| `GET`  | `/api/examples`                      | Returns every record created in this process                 |
-| `GET`  | `/api/examples/:id`                  | Returns one record, or 404 `RESOURCE_NOT_FOUND`              |
+| `POST` | `/api/examples`                      | Inserts a row and returns 201                                |
+| `GET`  | `/api/examples`                      | Returns the saved rows                                       |
+| `GET`  | `/api/examples/:id`                  | Returns one row, or 404 `RESOURCE_NOT_FOUND`                 |
+| `GET`  | `/api/health/database`               | 200 when PostgreSQL answers, 503 without internal details    |
 | `POST` | `/api/examples/validation`           | Checks the body and optional `currency` query. Does not save |
 | `POST` | `/api/examples/validation/:itemCode` | Same check, plus the route parameter. Does not save          |
 
-The in-memory array lives inside the repository created when the process starts. Stopping or restarting the API drops every record. Ids come from `crypto.randomUUID()`. Callers receive copies, so they cannot change the stored object.
+`price` is stored as `DECIMAL(12, 2)`. The repository converts the API number to a Prisma Decimal on write, using two decimal places, and converts the stored Decimal back to a finite JavaScript number on read. Controllers still receive the `ExampleRecord` type. An id that is not a UUID returns 404 before a query is sent. Rows remain after the process stops.
 
 Each step has one job. A later step may skip a file only when that step would be an empty pass-through with no explained purpose. The checkout path uses every step, because it validates input, applies price and stock rules, and writes through Prisma.
 
@@ -312,7 +326,7 @@ Each step has one job. A later step may skip a file only when that step would be
 
 ### Bootstrap
 
-`server.ts` reads the port and starts listening. `app.ts` builds the Express application: JSON body parsing, request logging, CORS for the web origin, routes, and the error middleware last.
+`server.ts` validates configuration, connects to PostgreSQL, and only then listens. `app.ts` builds the Express application: JSON body parsing, request logging, CORS for the web origin, routes, and the error middleware last. Shutdown stops new HTTP connections, waits for active requests, and then calls Prisma `$disconnect()`. A second shutdown signal does not run that sequence again. The forced exit remains 10 seconds.
 
 Configuration comes from environment variables. Database credentials and the OpenAI key exist only in this process.
 
@@ -341,9 +355,9 @@ Examples of rules, implemented when those modules are built:
 
 ### Repositories and Prisma
 
-Repositories are the only module code that calls Prisma once the database exists. Until then, the example module uses an in-memory repository behind the same interface. A product repository will later have methods such as "find active product by slug". The service asks for those operations by name.
+Repositories are the only module code that calls Prisma. `PrismaExampleRepository` is the first implementation. A product repository will later have methods such as "find active product by slug". The service asks for those operations by name and keeps the same interface when the storage changes.
 
-Prisma Client is constructed once and shared. The planned schema file is `apps/api/prisma/schema.prisma`. The web app does not get a copy.
+One Prisma Client is created at startup with the `pg` driver adapter. It is not created per request. The schema file is `apps/api/prisma/schema.prisma`. The web app does not get a copy. Known database failures become application errors: a unique conflict is 409, a missing record reported by Prisma is 404, and a connection failure is 503. Unexpected database errors still reach the central handler. Responses never include SQL, the connection string, or a stack trace.
 
 ### PostgreSQL
 
@@ -411,7 +425,7 @@ AI → Products (read-only)
 
 The AI module is a client of the catalog, not an owner of it. A suggestion from the model becomes a product change only when a product service method accepts that change through the normal validation path.
 
-No domain model is defined in this step. Tables, fields, and aggregates are chosen when the first persistence step needs them.
+The only table so far is `examples`. Product, category, inventory, cart, order, and user tables are still later work.
 
 ## 8. Request flows
 
@@ -476,7 +490,27 @@ A response DTO is a stable public shape. It can omit columns that exist only for
 
 `NEXT_PUBLIC_` values are embedded in JavaScript sent to the browser. `DATABASE_URL` and `OPENAI_API_KEY` must never use that prefix.
 
-Example files live beside each app, not at the repository root. `apps/api/.env.example` documents `PORT`, `NODE_ENV`, and `FRONTEND_ORIGIN`. `DATABASE_URL` and `OPENAI_API_KEY` are added when those features exist. `apps/web/.env.example` will document the API base URLs when the Next.js app is created. The root package does not run a server, so it has no `.env.example`.
+Example files live beside each app, not at the repository root. `apps/api/.env.example` documents `PORT`, `NODE_ENV`, `FRONTEND_ORIGIN`, and `DATABASE_URL`. The real `apps/api/.env` is ignored by Git. `OPENAI_API_KEY` is added when that feature exists. `apps/web/.env.example` will document the API base URLs when the Next.js app is created. The root package does not run a server, so it has no `.env.example`.
+
+Local development uses PostgreSQL database `ecommerce_dev` and login role `ecommerce_dev`. On this machine, `pg_hba.conf` trusts TCP connections from `127.0.0.1`, so that role has no password. The role can create databases because Prisma Migrate uses a short-lived shadow database during `migrate dev`. It is not a superuser. The existing `MyAiDb` database is not used by this project.
+
+Prisma 7 reads `apps/api/prisma7.config.ts`. The connection URL stays in the environment. It is not written in `schema.prisma`.
+
+Generate the client and check the schema from the repository root:
+
+```powershell
+npm run db:generate --workspace=@ecommerce/api
+npm run db:validate --workspace=@ecommerce/api
+```
+
+Create a development migration from `apps/api`. The installed npm treats `--name` as an npm option, so this command calls the local Prisma 7 program directly:
+
+```powershell
+Set-Location apps\api
+node ..\..\node_modules\prisma\build\index.js migrate dev --name init_examples
+```
+
+The first migration is `20261111190409_init_examples`. It creates `public.examples`. Production applies the committed migrations with `npm run db:deploy --workspace=@ecommerce/api` after `DATABASE_URL` points at that environment. `migrate dev` is only for development because it uses a shadow database. Deployment itself is not set up.
 
 ### Development and production
 
@@ -631,4 +665,4 @@ These are seams, not work started now.
 
 ## Current step boundary
 
-Step 02 recorded this architecture. The API serves `GET /api/health` and an in-memory example module under `/api/examples`. CORS, request logging, JSON limits, and Zod validation are in place. Authentication, Prisma, and the Next.js app are still later work. The example records disappear when the API process stops.
+The API serves `GET /api/health`, `GET /api/health/database`, and the example module under `/api/examples`. Example rows are stored in local PostgreSQL through Prisma 7. CORS, request logging, JSON limits, and Zod validation remain in place. Authentication, the Next.js app, and the commerce modules are still later work.

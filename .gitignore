@@ -21,6 +21,9 @@ pnpm-debug.log*
 logs/
 *.log
 
+# Generated Prisma Client
+apps/api/src/generated/
+
 # Build output
 dist/
 build/
